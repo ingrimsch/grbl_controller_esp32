@@ -81,6 +81,7 @@ extern uint32_t sdNumberOfCharSent ;
 extern WiFiClient telnetClient;
 
 uint8_t wposOrMpos ;
+uint32_t waitOkWhenSdMillis ;  // timeout when waiting for OK while sending form SD
 
 // ----------------- fonctions pour lire de GRBL -----------------------------
 void getFromGrblAndForward( void ) {   //get char from GRBL, forward them if statusprinting = PRINTING_FROM_PC and decode the data (look for "OK", for <xxxxxx> sentence
@@ -97,7 +98,7 @@ void getFromGrblAndForward( void ) {   //get char from GRBL, forward them if sta
     c=Serial2.read() ;
 //#define DEBUG_RECEIVED_CHAR
 #ifdef DEBUG_RECEIVED_CHAR      
-      Serial.print( (char) c) ; 
+      Serial.print( (char) c) ;
       //if  (c == 0x0A || c == 0x0C ) Serial.println(millis()) ;
 #endif      
     if ( statusPrinting == PRINTING_FROM_USB ) {
@@ -116,9 +117,9 @@ void getFromGrblAndForward( void ) {   //get char from GRBL, forward them if sta
 
     case '\r' : // CR is sent after "error:xx"
       if( getGrblPosState == GET_GRBL_STATUS_CLOSED ) {
-        if ( ( strGrblBuf[0] == 'e' && strGrblBuf[1] == 'r' ) || ( strGrblBuf[0] == 'A' && strGrblBuf[1] == 'L' ) ) {  // we got an error message or an ALARM message
+        if (  strGrblBuf[0] == 'e' && strGrblBuf[1] == 'r' )   {  // we got an error message or an ALARM message
           fillErrorMsg( strGrblBuf );           // save the error or ALARM
-        } else if ( ( strGrblBuf[0] == 'A' && strGrblBuf[1] == 'L' ) ) {
+        } else if  ( strGrblBuf[0] == 'A' && strGrblBuf[1] == 'L' )  {
           fillAlarmMsg( strGrblBuf );  
         }
         
@@ -250,7 +251,7 @@ void getFromGrblAndForward( void ) {   //get char from GRBL, forward them if sta
     lastC = c ;
   } // end while
   
-  if ( (millis() - millisLastGetGBL ) > 5500 ) {           // if we did not get a GRBL status since 5500 ms, status become "?"
+  if ( (millis() - millisLastGetGBL ) > 2500 ) {           // if we did not get a GRBL status since 2500 ms, status become "?"
     machineStatus[0] = '?' ; machineStatus[1] = '?' ; machineStatus[2] = 0 ; 
     //Serial.print( "force reset ") ; Serial.print( millis()) ; Serial.print( " LG> = ") ; Serial.print( millis()) ;
     millisLastGetGBL = millis() ;
@@ -285,7 +286,7 @@ void handleLastNumericField(void) { // decode last numeric field
           if ( wposOrMpos == 'W') {                  // we previously had a WPos so we update MPos
             mposXYZ[wcoIdx] = wposXYZ[wcoIdx] + wcoXYZ[wcoIdx] ;  
           } else {                                   // we previously had a MPos so we update WPos
-            mposXYZ[wcoIdx] = wposXYZ[wcoIdx] + wcoXYZ[wcoIdx] ;
+            wposXYZ[wcoIdx] = mposXYZ[wcoIdx] - wcoXYZ[wcoIdx] ;
           }
           
           wcoIdx++ ;
@@ -302,30 +303,37 @@ void sendToGrbl( void ) {
   static uint32_t nextSendMillis = 0 ;
   uint32_t currSendMillis  ;
   static uint32_t exitMillis ;
- 
+  #define WAIT_OK_SD_TIMEOUT 120000
   if ( statusPrinting == PRINTING_FROM_SD) {
-    while ( aDir[dirLevel+1].available() > 0 && (! waitOk) && statusPrinting == PRINTING_FROM_SD && Serial2.availableForWrite() > 2 ) {
-      sdChar = aDir[dirLevel+1].read() ;
-      if ( sdChar < 0 ) {
-        statusPrinting = PRINTING_STOPPED  ;
-        updateFullPage = true ;           // force to redraw the whole page because the buttons haved changed
-      } else {
-        sdNumberOfCharSent++ ;
-        if( sdChar != 13){
-          Serial2.print( (char) sdChar ) ;
-        }
-        if ( sdChar == '\n' ) {
-           waitOk = true ;
-        }
+    if ( waitOk ) {
+      if ( millis() > waitOkWhenSdMillis ) {
+        fillMsg(__MISSING_OK_WHEN_SENDING_FROM_SD ) ;   // give an error if we have to wait to much to get an OK from grbl
+        waitOkWhenSdMillis = millis()  + WAIT_OK_SD_TIMEOUT ;  // wait for 20 sec before generating the message again
       }
-    } // end while
-    if ( aDir[dirLevel+1].available() == 0 ) { 
-      statusPrinting = PRINTING_STOPPED  ; 
-      updateFullPage = true ;           // force to redraw the whole page because the buttons haved changed
-      //Serial2.print( (char) 0x18 ) ; //0x85) ;   // cancel jog (just for testing); must be removed
-      Serial2.print( (char) 10 ) ; // sent a new line to be sure that Grbl handle last line.
-    }
-    
+    } else {
+      waitOkWhenSdMillis = millis()  + WAIT_OK_SD_TIMEOUT ;  // set time out on 20 sec (20000msec)
+      while ( aDir[dirLevel+1].available() > 0 && (! waitOk) && statusPrinting == PRINTING_FROM_SD && Serial2.availableForWrite() > 2 ) {
+          sdChar = aDir[dirLevel+1].read() ;
+          if ( sdChar < 0 ) {
+            statusPrinting = PRINTING_STOPPED  ;
+            updateFullPage = true ;           // force to redraw the whole page because the buttons haved changed
+          } else {
+            sdNumberOfCharSent++ ;
+            if( sdChar != 13){             // 13 = carriage return
+              Serial2.print( (char) sdChar ) ;
+            }
+            if ( sdChar == '\n' ) {        // n= new line = line feed = 10 decimal
+               waitOk = true ;
+            }
+          }
+      } // end while
+      if ( aDir[dirLevel+1].available() == 0 ) { 
+        statusPrinting = PRINTING_STOPPED  ; 
+        updateFullPage = true ;           // force to redraw the whole page because the buttons haved changed
+        //Serial2.print( (char) 0x18 ) ; //0x85) ;   // cancel jog (just for testing); must be removed
+        Serial2.print( (char) 10 ) ; // sent a new line to be sure that Grbl handle last line.
+      }
+    } // end of else waitOk
   } else if ( statusPrinting == PRINTING_FROM_USB ) {
     while ( Serial.available() && statusPrinting == PRINTING_FROM_USB ) {
       sdChar = Serial.read() ;
@@ -356,8 +364,6 @@ void sendToGrbl( void ) {
   } // end else if  
   if ( statusPrinting == PRINTING_STOPPED || statusPrinting == PRINTING_PAUSED ) {   // process nunchuk cancel and commands
     if ( jogCancelFlag ) {
-
-
       if ( jog_status == JOG_NO ) {
         Serial2.print( (char) 0x85) ; Serial2.print("G4P0") ; Serial2.print( (char) 0x0A) ;    // to be execute after a cancel jog in order to get an OK that says that grbl is Idle.
         Serial2.flush() ;             // wait that all outgoing char are really sent.
@@ -370,7 +376,7 @@ void sendToGrbl( void ) {
           jog_status = JOG_NO ;
           jogCancelFlag = false ;
            
-         } else {
+        } else {
           if ( millis() >  exitMillis ) {  // si on ne reçoit pas le OK dans le délai maximum prévu
             jog_status = JOG_NO ; // reset all parameters related to jog .
             jogCancelFlag = false ;
@@ -379,25 +385,19 @@ void sendToGrbl( void ) {
           }
         }
       } 
-
-/*
-      Serial2.print( '!') ;
-      Serial2.flush() ;
-      delay(10);
-      Serial2.print( '~') ;
-      jogCancelFlag = false ;
-*/      
-    }
+    } // end of jogCancelFlag
     
     if ( jogCmdFlag ) {
       if ( jog_status == JOG_NO ) {
         //Serial.println( bufferAvailable[0] ) ;
         if (bufferAvailable[0] > 15) {    // tests shows that GRBL gives errors when we fill to much the block buffer
-          sendJogCmd(startMoveMillis) ;                
-          waitOk = true ;
-          jog_status = JOG_WAIT_END_CMD ;
+          if ( sendJogCmd(startMoveMillis) ) { // if command has been sent
+            waitOk = true ;
+            jog_status = JOG_WAIT_END_CMD ;
+            exitMillis = millis() + 500 ; //expect a OK before 500 msec
+          }
         }  
-        exitMillis = millis() + 500 ; //expect a OK before 500 msec      
+              
       } else if ( jog_status == JOG_WAIT_END_CMD  ) {
         if ( !waitOk ) {
           jog_status = JOG_NO ;
@@ -429,7 +429,7 @@ void sendToGrbl( void ) {
   }
 }  
 
-void sendJogCmd(uint32_t startTime) {
+boolean sendJogCmd(uint32_t startTime) {
 #define MINDIST 0.01    // mm
 #define MINSPEED 10     // mm
 #define MAXSPEEDXY 2000 // mm/sec
@@ -446,8 +446,8 @@ void sendJogCmd(uint32_t startTime) {
         } else {
           counter = counter - DELAY_BEFORE_REPEAT_MOVE ;
           if (counter < 0) {
-            Serial.println("counter neg");
-            return;              // do not send a move
+            //Serial.println("counter neg");
+            return false ;              // do not send a move; // false means that cmd has not been sent
           }
           if ( counter > (  DELAY_TO_REACH_MAX_SPEED - DELAY_BEFORE_REPEAT_MOVE) ) {
             counter = DELAY_TO_REACH_MAX_SPEED - DELAY_BEFORE_REPEAT_MOVE ;
@@ -496,6 +496,7 @@ void sendJogCmd(uint32_t startTime) {
         
         //Serial.print("Send cmd jog " ); Serial.print(distanceMove) ; Serial.print(" " ); Serial.print(speedMove) ;Serial.print(" " ); Serial.println(millis() - startTime );
         //Serial.print(prevMoveX) ; Serial.print(" " ); Serial.print(prevMoveY) ; Serial.print(" " ); Serial.print(prevMoveZ) ;Serial.print(" ") ; Serial.println(millis()) ;
+        return true ; // true means that cmd has been sent
 }
 
 char * errorArrayMsg[] = { __UNKNOWN_ERROR  , 

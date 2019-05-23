@@ -104,7 +104,7 @@ uint8_t statusPrinting = PRINTING_STOPPED ;
 // grbl data
 boolean newGrblStatusReceived = false ;
 char machineStatus[9];           // Iddle, Run, Alarm, ...
-boolean waitOk = false ;
+volatile boolean waitOk = false ;
 
 // Nunchuk data.
 extern boolean nunchukOK ;  // keep flag to detect a nunchuk at startup
@@ -159,7 +159,7 @@ void setup() {
   telnetInit() ;
 #endif 
   Serial2.print(0X18) ; // send a soft reset
-  Serial2.println(" ") ;Serial2.print("$10=3");Serial2.println(" ") ;   // $10=3 is used in order to get available space in GRBL buffer in GRBL status messages
+  Serial2.println(" ") ;Serial2.print("$10=3");Serial2.println(" ") ;   // $10=3 is used in order to get available space in GRBL buffer in GRBL status messages; il also means we are asking GRBL to sent always MPos.
   Serial2.flush();                                                      // this is used to avoid sending to many jogging movements when using the nunchuk  
 }
 
@@ -191,7 +191,7 @@ void loop() {
  executeMainActionBtn () ; // 
 
  // handle nunchuk if implemented
-  if ( nunchukOK && (statusPrinting == PRINTING_STOPPED && ( machineStatus[0] == 'I' || machineStatus[0] == 'J') ) )  {
+  if ( nunchukOK && statusPrinting == PRINTING_STOPPED && ( machineStatus[0] == 'I' || machineStatus[0] == 'J' || machineStatus[0] == '?') )  {  //read only if the GRBL status is Idle or Jog or ?? (this last is only for testing without GRBL
     handleNunchuk() ;
   }
 
@@ -205,20 +205,21 @@ void loop() {
   if (newGrblStatusReceived == true && ( currentPage == _P_INFO || currentPage == _P_MOVE || currentPage == _P_SETXYZ || currentPage == _P_SETUP ) ) { //force a refresh if a message has been received from GRBL and we are in a info screen or in a info screen
     updatePartPage = true ;
   }
-  if (newGrblStatusReceived == true && ( currentPage == _P_SETUP) ) { //force a refresh if a message has been received from GRBL and we are in a setup screen
+  newGrblStatusReceived = false ;
+  if (lastMsgChanged == true && ( currentPage == _P_INFO || currentPage == _P_MOVE || currentPage == _P_SETXYZ || currentPage == _P_SETUP) ) { //force a refresh if a message has been filled
     updatePartPage = true ;
   }
-  newGrblStatusReceived = false ;
+  
   if (  ( updateFullPage ) ) {
     drawFullPage() ; 
 
   } else if ( updatePartPage ) {   // si l'écran doit être réaffiché, construit l'écran et l'affiche
     drawPartPage() ;                           // si l'écran doit être mis à jour, exécute une fonction plus limitée qui ne redessine pas les boutons        
   }    
-  
+  lastMsgChanged = false ; // lastMsgChanged is used in drawPartPage; so, it can not be set on false before
   updateFullPage = false ;
   updatePartPage = false ;
-  lastMsgChanged = false ;
+  
 }
 
 

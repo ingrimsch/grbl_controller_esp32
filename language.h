@@ -1,3 +1,4 @@
+
 #ifndef _language_h
 #define _language_h
 
@@ -84,6 +85,8 @@
 #define __CMD_PART_NOT_READ "Cmd: partie non lue"
 #define __CMD_COULD_NOT_SAVE "Cmd non sauv\x80" "e"
 #define __NO_NUNCHUK "Pas de Nunchuk" 
+#define __MISSING_OK_WHEN_SENDING_FROM_SD "Envoi de Gcode suspendu pendant plus de 2 min" 
+
 
 #define __UNKNOWN_ERROR "Erreur inconnue"  
 #define __EXPECTED_CMD_LETTER "1.Lettre Cmd attendue"
@@ -200,6 +203,7 @@
 #define __CMD_PART_NOT_READ "Cmd: Teil nicht gelesen"
 #define __CMD_COULD_NOT_SAVE "Cmd: konnte nicht speichern"
 #define __NO_NUNCHUK "Kein Nunchuk" 
+#define __MISSING_OK_WHEN_SENDING_FROM_SD "Sending Gcode suspendend more than 2 min"
 
 #define __UNKNOWN_ERROR "Unbekannter Fehler"  
 #define __EXPECTED_CMD_LETTER "1.Erwarteter cmd Buchstabe"
@@ -321,6 +325,7 @@
 #define __CMD_PART_NOT_READ "Cmd: part not read"
 #define __CMD_COULD_NOT_SAVE "Cmd: could not save"
 #define __NO_NUNCHUK "No nunchuk" 
+#define __MISSING_OK_WHEN_SENDING_FROM_SD "Sending Gcode suspendend more than 2 min"
 
 #define __UNKNOWN_ERROR "Unknown error"  
 #define __EXPECTED_CMD_LETTER "1.Expected cmd letter"
